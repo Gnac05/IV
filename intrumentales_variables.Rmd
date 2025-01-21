@@ -24,7 +24,7 @@ Cette approche a démontré son efficacité dans l'analyse des comportements fin
 Comment surmonter les biais d’endogénéité dans les modèles d’analyse de risque de crédit afin de produire des résultats plus fiables et exploitables pour les décideurs financiers ?
 
 
-# Exploration de la base de données
+# I. Exploration de la base de données
 
 Notre $Dataset$ nous vient tout droit de $Kaggle$. Pour ceux qui sont intéressés(es) par cela, vous pouvez cliquez [ici](https://www.kaggle.com/datasets/laotse/credit-risk-dataset). Nous avons eu 32,581 observations de 12 variables.
 
@@ -35,7 +35,7 @@ credit_risk_dataset = read_csv("~/Applis/GMM3/Stat. Multi. Varié/project/credit
 summary(credit_risk_dataset)
 ```
 
-## Récapitulatif
+## I.1 Récapitulatif
 
 Nous avons 4 variables qualitatives et donc 8 quantitatives dont $3\%$ de $person\_emp\_length$ et $9.5\%$ de $loan\_int\_rate$ sont manquantes.
 
@@ -51,14 +51,14 @@ Nous avons 4 variables qualitatives et donc 8 quantitatives dont $3\%$ de $perso
 | `loan_int_rate` | Taux d'intérêt du prêt | Continue |
 | `loan_status` | Statut du prêt (0 pour non-défaut, 1 pour défaut) | Discrète |
 | `loan_percent_income` | Pourcentage du revenu consacré au prêt | Continue |
-| `cb_person_default_on_file` | Historique de défaut de paiement (True/False) | Discrète |
+| `cb_person_default_on_file` | Historique de défaut de paiement (True/False) | Qualitative |
 | `cb_person_cred_hist_length` | Durée de l'historique de crédit en années | Continue |
 
-# Préparation des Données
+# II. Préparation des Données
 
 Nous avons remarqué des valeurs manquantes ainsi que des valeurs aberrantes dans nos données. Il est ainsi nécessaire de les traiter.
 
-## Suppression des valeurs manquantes
+## II.1 Suppression des valeurs manquantes
 
 ```{r}
 # Supprimer toutes les lignes contenant au moins une valeur manquante
@@ -70,7 +70,7 @@ print(dim(data_cleaned))
 summary(data_cleaned)
 ```
 
-## Suppression des valeurs abberrantes
+## II.2- Suppression des valeurs abberrantes
 
 ```{r}
 # Suppression des lignes où l'âge est < à 18 et > 90
@@ -79,10 +79,13 @@ data_cleaned <- data_cleaned[data_cleaned$person_age >= 18 & data_cleaned$person
 # Suppression des lignes où la durée de l'emploi est supérieure à l'âge
 credit_data_clean <- data_cleaned[data_cleaned$person_emp_length <= data_cleaned$person_age - 16, ]
 
+# Vérifier le résultat
+print(dim(credit_data_clean))
+
 summary(credit_data_clean)
 ```
 
-## Transformation des variables qualitatives
+## II.3- Transformation des variables qualitatives
 
 Les variables catégorielles doivent être converties en variables numériques pour être utilisées dans les modèles statistiques. Nous utilisons l'encodage one-hot pour cette transformation :
 
@@ -103,9 +106,11 @@ credit_data_encoded <- predict(dummies, newdata = credit_data_clean)
 # Combinaison des données encodées avec les variables numériques
 credit_data <- cbind(credit_data_clean %>% select(-person_home_ownership, -loan_intent, -loan_grade, -cb_person_default_on_file), credit_data_encoded)
 
+# Vérifier le résultat
+print(dim(credit_data))
 ```
 
-# Identification des variables endogènes
+# III. Identification des variables endogènes
 
 Les variables endogènes sont celles qui sont expliquées par d'autres variables du modèle. Pour les identifier, nous pouvons examiner les corrélations entre les variables et construire un modèle de régression multiple :
 
@@ -123,7 +128,7 @@ cor_matrix <- cor(data)
 corrplot(cor_matrix, method = "circle")
 ```
 
-## Analyse de la matrice de corrélation (focalisée sur $loan\_status$)
+## III.1- Analyse de la matrice de corrélation (focalisée sur $loan\_status$)
 
 ### Variables avec corrélation directe avec $loan\_status$ : 
 - $loan\_amnt$ : Corrélation faible  (0.11). 
@@ -143,16 +148,21 @@ Ces variables sont liées à $loan\_status$, mais pour déterminer l'endogénéi
   - Faiblement corrélée avec $loan\_amnt$ et $loan\_percent\_income$.
 
 ### Conclusion basée sur cette analyse :
+
 Variables potentiellement endogènes :
+
 1. $loan\_amnt$ : Fortement corrélée avec $loan\_percent\_income$ et $person\_income$, indiquant qu'elle pourrait être influencée par des facteurs non observés.
+
 2. $loan\_percent\_income$ : Endogénéité potentielle due à sa relation avec $loan\_amnt$ et $loan\_status$.
-3. $loan\_int\_rate$ : Moins suspecte mais corrélée avec d'autres explicatives.
 
-# Régression de Variables Instrumentales
+3. $loan\_int\_rate$ : Moins suspecte mais corrélée avec d'autres variables explicatives.
 
-## Modèle 1
+
+# VI. Régression de Variables Instrumentales
+
+## VI.1- Modèle 1
 Ici on a utilisé un modèle avec $loan\_amnt$ comme endogène et $cb\_person\_cred\_hist\_length$ comme instrument
-```{r}
+```{r warning=FALSE}
 library(AER)
 
 iv_model <- ivreg(loan_status ~ loan_amnt + loan_percent_income + loan_int_rate | cb_person_cred_hist_length + loan_percent_income + loan_int_rate, 
@@ -161,11 +171,11 @@ iv_model <- ivreg(loan_status ~ loan_amnt + loan_percent_income + loan_int_rate 
 summary(iv_model, diagnostics = TRUE)
 ```
 ### Interprètation des tests de diagnostiques du modèle 1
-- Instruments faibles : Le test montre une statistique de 159.743 avec une p-value < 2e-16, ce qui signifie que l'instrument utilisé ($cb\_person\_cred\_hist\_length$) sont forts.
+- Instruments faibles : Le test montre une statistique de 159.743 avec une p-value < 2e-16, ce qui signifie que l'instrument utilisé ($cb\_person\_cred\_hist\_length$) est fort.
 - Test de Wu-Hausman : Avec une statistique de 0.215 et une p-value de 0.643, nous ne rejetons pas l'hypothèse nulle que les variables explicatives ne sont pas endogènes. Cela suggère que l'endogénéité des variables explicatives ($loan\_amnt$) n'est pas significative.
 - Test de Sargan : Non applicable ici car nous n'avons pas plus d'instruments que de variables endogènes.
 
-## Modèle 2
+## VI.2- Modèle 2
 Ici on a utilisé un modèle avec $loan\_amnt$ comme endogène et $person\_income$, $loan\_percent\_income$ comme instruments
 ```{r}
 library(AER)
@@ -181,7 +191,7 @@ summary(iv_model, diagnostics = TRUE)
 - Sargan : Ce test rejette l'hypothèse que les instruments sont parfaitement exogènes. Cela peut indiquer un problème de validité des instruments.
 
 
-## Modèle 3
+## VI.3- Modèle 3
 Ici on a utilisé un modèle avec $loan\_percent\_income$ comme endogène et $loan\_amnt$, $loan\_int\_rate$  comme instrument
 ```{r}
 library(AER)
@@ -197,16 +207,16 @@ summary(iv_model, diagnostics = TRUE)
 - Sargan : Ce test rejette l'hypothèse que les instruments sont exogènes, indiquant un problème de validité des instruments. Cela peut biaiser les estimations.
 
 
-# Introduction complète à l'utilisation du package $ivreg$
+# V. Introduction complète à l'utilisation du package $ivreg$
 Le package `ivreg` de R offre une implémentation complète de la régression par variables instrumentales en utilisant l'estimation des moindres carrés en deux étapes (2SLS). Il fournit des fonctionnalités étendues pour l'estimation des paramètres, l'inférence, les prédictions, ainsi que divers diagnostics de régression, tels que les valeurs de levier (hat values), les résidus studentisés et les distances de Cook. De plus, il intègre des outils graphiques pour les diagnostics, comme les graphiques composant-plus-résidu et les graphiques de variable ajoutée, ainsi que des graphiques d'effet avec résidus partiels. 
 
 Voici une présentation détaillée de l'utilisation du package `ivreg` dans un document R Markdown, incluant une application pratique.
 
-## Petit rappel
+## V.1- Petit rappel
 
 La régression par variables instrumentales (IV) est une méthode utilisée pour estimer les relations causales lorsque les variables explicatives sont corrélées avec l'erreur du modèle, entraînant une endogénéité. Le package `ivreg` de R facilite l'estimation des modèles IV en utilisant les moindres carrés en deux étapes (2SLS) et offre divers outils de diagnostic pour évaluer la qualité du modèle. 
 
-## Installation et Chargement du Package
+## V.2- Installation et Chargement du Package
 
 Pour installer le package `ivreg`, exécutez la commande suivante :
 
@@ -220,7 +230,7 @@ Ensuite, chargez le package :
 library(ivreg)
 ```
 
-## Présentation des Données
+## V.3- Présentation des Données
 
 Pour illustrer l'utilisation de `ivreg`, nous utiliserons le jeu de données `SchoolingReturns` inclus dans le package. Ce jeu de données provient d'une étude sur l'effet de la scolarité sur les revenus aux États-Unis. 
 
@@ -242,7 +252,7 @@ data("SchoolingReturns", package = "ivreg")
 summary(SchoolingReturns[, 1:8])
 ```
 
-## Modèle de Régression OLS
+## V.4- Modèle de Régression OLS
 
 Commençons par estimer un modèle de régression linéaire ordinaire (OLS) où le logarithme du salaire (`log(wage)`) est expliqué par les années de scolarité (`education`), l'expérience professionnelle (`experience`), l'ethnicité (`ethnicity`), la résidence en zone urbaine (`smsa`) et la résidence dans le sud (`south`) :
 
@@ -252,7 +262,7 @@ m_ols <- lm(log(wage) ~ education + poly(experience, 2) + ethnicity + smsa + sou
 summary(m_ols)
 ```
 
-## Modèle de Régression IV avec `ivreg`
+## V.5- Modèle de Régression IV avec `ivreg`
 
 L'endogénéité potentielle de la variable `education` peut biaiser les estimations OLS. Pour corriger cela, nous utilisons la variable instrumentale `nearcollege`, qui indique si l'individu vivait à proximité d'un collège à 14 ans. Nous estimons le modèle IV en utilisant la fonction `ivreg` :
 
@@ -264,7 +274,7 @@ m_iv <- ivreg(log(wage) ~ education + poly(experience, 2) + ethnicity + smsa + s
 summary(m_iv)
 ```
 
-## Diagnostics du Modèle IV
+## V.6- Diagnostics du Modèle IV
 
 Le package `ivreg` offre divers outils pour diagnostiquer la qualité du modèle IV. Par exemple, nous pouvons examiner les valeurs de levier :
 
